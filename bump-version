@@ -1,0 +1,129 @@
+#!/bin/bash
+
+# --- Parse Command Line Arguments ---
+BUMP_TYPE="minor" # Default to minor
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --patch)
+            BUMP_TYPE="patch"
+            shift
+            ;;
+        --minor)
+            BUMP_TYPE="minor"
+            shift
+            ;;
+        --major)
+            BUMP_TYPE="major"
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: $0 [--patch|--minor|--major]"
+            echo ""
+            echo "Options:"
+            echo "  --patch    Bump patch version (X.Y.Z -> X.Y.Z+1)"
+            echo "  --minor    Bump minor version (X.Y.Z -> X.Y+1.0) [default]"
+            echo "  --major    Bump major version (X.Y.Z -> X+1.0.0)"
+            echo "  -h, --help Show this help message"
+            exit 0
+            ;;
+        *)
+            echo "Error: Unknown option '$1'"
+            echo "Use --help for usage information."
+            exit 1
+            ;;
+    esac
+done
+
+# --- Configuration ---
+# Detect develop branch (check for 'develop' or 'dev')
+if git show-ref --verify --quiet refs/heads/develop; then
+    DEVELOP_BRANCH="develop"
+elif git show-ref --verify --quiet refs/heads/dev; then
+    DEVELOP_BRANCH="dev"
+else
+    DEVELOP_BRANCH=""
+fi
+
+# Switch to develop branch if it exists
+if [ -n "$DEVELOP_BRANCH" ]; then
+    git checkout $DEVELOP_BRANCH
+    echo "Switched to branch $DEVELOP_BRANCH."
+else
+    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+    echo "No develop branch found. Staying on current branch $CURRENT_BRANCH."
+fi
+
+# --- File Detection Logic ---
+VERSION_FILE=""
+if [ -f "app.yml" ]; then
+    VERSION_FILE="app.yml"
+elif [ -f "package.yml" ]; then
+    VERSION_FILE="package.yml"
+elif [ -f "package.json" ]; then
+    VERSION_FILE="package.json"
+else
+    echo "Error: Could not find a supported version file (app.yml, package.yml, or package.json) in the current directory."
+    echo "Please ensure one of these files exists."
+    exit 1
+fi
+
+# Capitalize bump type for display
+BUMP_TYPE_DISPLAY=$(echo "$BUMP_TYPE" | awk '{print toupper(substr($0,1,1)) tolower(substr($0,2))}')
+
+echo "--- Starting $BUMP_TYPE_DISPLAY Version Bump ---"
+echo "Detected Version File: $VERSION_FILE"
+
+
+# 1. Get current version (Supports YAML and JSON formats)
+CURRENT_VERSION=$(grep -oE 'version["'\''"]?[[:space:]]*:?[[:space:]]*["'\''"]?[0-9]+\.[0-9]+\.[0-9]+' "$VERSION_FILE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+$')
+
+if [ -z "$CURRENT_VERSION" ]; then
+    echo "Error: Could not find a version string (X.Y.Z format) in $VERSION_FILE."
+    echo "Check if the format 'X.Y.Z' is present after 'version:' or '\"version\":'."
+    exit 1
+fi
+
+echo "Current project version: $CURRENT_VERSION"
+
+# 2. Extract and calculate the new version based on bump type
+IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+
+case $BUMP_TYPE in
+    patch)
+        NEW_PATCH=$((PATCH + 1))
+        NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+        ;;
+    minor)
+        NEW_MINOR=$((MINOR + 1))
+        NEW_VERSION="$MAJOR.$NEW_MINOR.0"
+        ;;
+    major)
+        NEW_MAJOR=$((MAJOR + 1))
+        NEW_VERSION="$NEW_MAJOR.0.0"
+        ;;
+esac
+
+echo "New Release Version will be: $NEW_VERSION"
+
+# 3. Update the version file with the new version
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    sed -i '' -E "s/([0-9]+\.[0-9]+\.[0-9]+)/$NEW_VERSION/" "$VERSION_FILE"
+else
+    sed -i -E "s/([0-9]+\.[0-9]+\.[0-9]+)/$NEW_VERSION/" "$VERSION_FILE"
+fi
+
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+echo "Updated $VERSION_FILE to $NEW_VERSION."
+
+# 4. Commit the version change
+git add "$VERSION_FILE"
+git commit -m "chore: Bump $VERSION_FILE to $NEW_VERSION"
+echo "Committed version bump."
+
+echo "--- SUCCESS ---"
+if [ -n "$DEVELOP_BRANCH" ]; then
+    echo "Version bumped to $NEW_VERSION (develop branch: $DEVELOP_BRANCH)"
+else
+    echo "Version bumped to $NEW_VERSION on current branch $CURRENT_BRANCH."
+fi
