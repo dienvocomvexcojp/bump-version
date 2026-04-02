@@ -28,7 +28,7 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            echo "Error: Unknown option '$1'"
+            echo "🚨 Error: Unknown option '$1'"
             echo "Use --help for usage information."
             exit 1
             ;;
@@ -48,10 +48,10 @@ fi
 # Switch to develop branch if it exists
 if [ -n "$DEVELOP_BRANCH" ]; then
     git checkout $DEVELOP_BRANCH
-    echo "Switched to branch $DEVELOP_BRANCH."
+    echo "✅ Switched to branch **$DEVELOP_BRANCH**."
 else
     CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-    echo "No develop branch found. Staying on current branch $CURRENT_BRANCH."
+    echo "ℹ️  No develop branch found. Staying on current branch **$CURRENT_BRANCH**."
 fi
 
 # --- File Detection Logic ---
@@ -63,7 +63,7 @@ elif [ -f "package.yml" ]; then
 elif [ -f "package.json" ]; then
     VERSION_FILE="package.json"
 else
-    echo "Error: Could not find a supported version file (app.yml, package.yml, or package.json) in the current directory."
+    echo "🚨 Error: Could not find a supported version file (app.yml, package.yml, or package.json) in the current directory."
     echo "Please ensure one of these files exists."
     exit 1
 fi
@@ -72,19 +72,21 @@ fi
 BUMP_TYPE_DISPLAY=$(echo "$BUMP_TYPE" | awk '{print toupper(substr($0,1,1)) tolower(substr($0,2))}')
 
 echo "--- Starting $BUMP_TYPE_DISPLAY Version Bump ---"
-echo "Detected Version File: $VERSION_FILE"
+echo "Detected Version File: **$VERSION_FILE**"
 
 
 # 1. Get current version (Supports YAML and JSON formats)
-CURRENT_VERSION=$(grep -oE 'version["'\''"]?[[:space:]]*:?[[:space:]]*["'\''"]?[0-9]+\.[0-9]+\.[0-9]+' "$VERSION_FILE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+$')
+# This grep attempts to find the version string, common patterns:
+# 'version: X.Y.Z' (YAML) or '"version": "X.Y.Z"' (JSON)
+CURRENT_VERSION=$(grep -oE 'version["'']?[[:space:]]*:?[[:space:]]*["'']?[0-9]+\.[0-9]+\.[0-9]+' "$VERSION_FILE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
 
 if [ -z "$CURRENT_VERSION" ]; then
-    echo "Error: Could not find a version string (X.Y.Z format) in $VERSION_FILE."
+    echo "🚨 Error: Could not find a version string (X.Y.Z format) in $VERSION_FILE."
     echo "Check if the format 'X.Y.Z' is present after 'version:' or '\"version\":'."
     exit 1
 fi
 
-echo "Current project version: $CURRENT_VERSION"
+echo "Current project version: **$CURRENT_VERSION**"
 
 # 2. Extract and calculate the new version based on bump type
 IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
@@ -104,26 +106,32 @@ case $BUMP_TYPE in
         ;;
 esac
 
-echo "New Release Version will be: $NEW_VERSION"
+echo "New Release Version will be: **$NEW_VERSION**"
 
-# 3. Update the version file with the new version
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    sed -i '' -E "s/([0-9]+\.[0-9]+\.[0-9]+)/$NEW_VERSION/" "$VERSION_FILE"
-else
-    sed -i -E "s/([0-9]+\.[0-9]+\.[0-9]+)/$NEW_VERSION/" "$VERSION_FILE"
-fi
+# 6. Update only the first version occurrence in the file
+tmp_file="${VERSION_FILE}.tmp.$$"
+awk -v new_version="$NEW_VERSION" '
+BEGIN { replaced = 0 }
+{
+    if (!replaced && tolower($0) ~ /version/ && match($0, /[0-9]+\.[0-9]+\.[0-9]+/)) {
+        $0 = substr($0, 1, RSTART - 1) new_version substr($0, RSTART + RLENGTH)
+        replaced = 1
+    }
+    print
+}
+' "$VERSION_FILE" > "$tmp_file" && mv "$tmp_file" "$VERSION_FILE"
 
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-echo "Updated $VERSION_FILE to $NEW_VERSION."
+echo "✅ Updated $VERSION_FILE to **$NEW_VERSION**."
 
-# 4. Commit the version change
+# 7. Commit the version change
 git add "$VERSION_FILE"
 git commit -m "chore: Bump $VERSION_FILE to $NEW_VERSION"
-echo "Committed version bump."
+echo "✅ Committed version bump."
 
-echo "--- SUCCESS ---"
+echo "--- **SUCCESS** ---"
 if [ -n "$DEVELOP_BRANCH" ]; then
-    echo "Version bumped to $NEW_VERSION (develop branch: $DEVELOP_BRANCH)"
+    echo "Version bumped to **$NEW_VERSION** (develop branch: $DEVELOP_BRANCH)"
 else
-    echo "Version bumped to $NEW_VERSION on current branch $CURRENT_BRANCH."
+    echo "Version bumped to **$NEW_VERSION** on current branch **$CURRENT_BRANCH**."
 fi
