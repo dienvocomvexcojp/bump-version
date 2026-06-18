@@ -2,6 +2,7 @@
 
 # --- Parse Command Line Arguments ---
 BUMP_TYPE="minor" # Default to minor
+SKIP_SWITCH=false # Default to switching to develop branch
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -17,14 +18,20 @@ while [[ $# -gt 0 ]]; do
             BUMP_TYPE="major"
             shift
             ;;
+        --no-switch|--current)
+            SKIP_SWITCH=true
+            shift
+            ;;
         -h|--help)
-            echo "Usage: $0 [--patch|--minor|--major]"
+            echo "Usage: $0 [--patch|--minor|--major] [--no-switch]"
             echo ""
             echo "Options:"
-            echo "  --patch    Bump patch version (X.Y.Z -> X.Y.Z+1)"
-            echo "  --minor    Bump minor version (X.Y.Z -> X.Y+1.0) [default]"
-            echo "  --major    Bump major version (X.Y.Z -> X+1.0.0)"
-            echo "  -h, --help Show this help message"
+            echo "  --patch      Bump patch version (X.Y.Z -> X.Y.Z+1)"
+            echo "  --minor      Bump minor version (X.Y.Z -> X.Y+1.0) [default]"
+            echo "  --major      Bump major version (X.Y.Z -> X+1.0.0)"
+            echo "  --no-switch  Stay on current branch (skip switching to develop)"
+            echo "  --current    Alias for --no-switch"
+            echo "  -h, --help   Show this help message"
             exit 0
             ;;
         *)
@@ -36,22 +43,30 @@ while [[ $# -gt 0 ]]; do
 done
 
 # --- Configuration ---
-# Detect develop branch (check for 'develop' or 'dev')
-if git show-ref --verify --quiet refs/heads/develop; then
-    DEVELOP_BRANCH="develop"
-elif git show-ref --verify --quiet refs/heads/dev; then
-    DEVELOP_BRANCH="dev"
-else
-    DEVELOP_BRANCH=""
-fi
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
-# Switch to develop branch if it exists
-if [ -n "$DEVELOP_BRANCH" ]; then
-    git checkout $DEVELOP_BRANCH
-    echo "✅ Switched to branch **$DEVELOP_BRANCH**."
+# Skip branch switching if --no-switch flag is set
+if [ "$SKIP_SWITCH" = true ]; then
+    echo "ℹ️  Staying on current branch **$CURRENT_BRANCH** (--no-switch)."
+    DEVELOP_BRANCH=""
 else
-    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-    echo "ℹ️  No develop branch found. Staying on current branch **$CURRENT_BRANCH**."
+    # Detect develop branch (check for 'develop' or 'dev')
+    if git show-ref --verify --quiet refs/heads/develop; then
+        DEVELOP_BRANCH="develop"
+    elif git show-ref --verify --quiet refs/heads/dev; then
+        DEVELOP_BRANCH="dev"
+    else
+        DEVELOP_BRANCH=""
+    fi
+
+    # Switch to develop branch if it exists
+    if [ -n "$DEVELOP_BRANCH" ]; then
+        git checkout $DEVELOP_BRANCH
+        echo "✅ Switched to branch **$DEVELOP_BRANCH**."
+        CURRENT_BRANCH="$DEVELOP_BRANCH"
+    else
+        echo "ℹ️  No develop branch found. Staying on current branch **$CURRENT_BRANCH**."
+    fi
 fi
 
 # --- File Detection Logic ---
@@ -121,7 +136,6 @@ BEGIN { replaced = 0 }
 }
 ' "$VERSION_FILE" > "$tmp_file" && mv "$tmp_file" "$VERSION_FILE"
 
-CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 echo "✅ Updated $VERSION_FILE to **$NEW_VERSION**."
 
 # 7. Commit the version change

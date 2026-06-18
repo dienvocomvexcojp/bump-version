@@ -35,6 +35,9 @@ bump-version --patch
 # Bump major version: 1.2.3 -> 2.0.0
 bump-version --major
 
+# In case you want to bump version only on this branch
+bump-version --current
+
 # Show help
 bump-version --help
 ```
@@ -50,10 +53,10 @@ bump-version --help
 
 ## Supported Files
 
-| File | Format |
-|------|--------|
-| `app.yml` | `version: X.Y.Z` |
-| `package.yml` | `version: X.Y.Z` |
+| File           | Format               |
+| -------------- | -------------------- |
+| `app.yml`      | `version: X.Y.Z`     |
+| `package.yml`  | `version: X.Y.Z`     |
 | `package.json` | `"version": "X.Y.Z"` |
 
 ## Uninstall
